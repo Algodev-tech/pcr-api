@@ -9,61 +9,99 @@ function dhan_post($url, array $body) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($body),
-        CURLOPT_HTTPHEADER => [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($body),
+        CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
             'access-token: ' . DHAN_ACCESS_TOKEN,
-            'client-id'    => DHAN_CLIENT_ID,
+            'client-id: '   . DHAN_CLIENT_ID,
         ],
         CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT => 15,
+        CURLOPT_TIMEOUT        => 15,
     ]);
+
     $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
     curl_close($ch);
-    return $resp ? json_decode($resp, true) : null;
+
+    if ($resp === false) {
+        return [
+            'status' => 'failed',
+            'error'  => $err,
+            '_http'  => $code,
+        ];
+    }
+
+    $json = json_decode($resp, true);
+    if (!is_array($json)) {
+        return [
+            'status' => 'failed',
+            'error'  => 'Invalid JSON from Dhan',
+            '_http'  => $code,
+            '_raw'   => $resp,
+        ];
+    }
+
+    $json['_http'] = $code;
+    return $json;
 }
 
 $result = ['timestamp' => date('Y-m-d H:i:s')];
 
+// STEP 1: Get expiry list for NIFTY (security id 13, IDX_I)
 $expiry_res = dhan_post('https://api.dhan.co/v2/optionchain/expirylist', [
     'UnderlyingScrip' => 13,
     'UnderlyingSeg'   => 'IDX_I',
 ]);
 
-if (!$expiry_res || ($expiry_res['status'] ?? '') !== 'success') {
-    $result['error'] = 'Failed to fetch expiry';
+// If expiry API fails, return its full response for debugging
+if (($expiry_res['status'] ?? '') !== 'success') {
+    $result['error']       = 'Failed to fetch expiry';
+    $result['expiry_resp'] = $expiry_res;
     echo json_encode($result);
     exit;
 }
 
 $expiry = $expiry_res['data'][0] ?? null;
+if (!$expiry) {
+    $result['error']       = 'No expiry received';
+    $result['expiry_resp'] = $expiry_res;
+    echo json_encode($result);
+    exit;
+}
 
+// STEP 2: Get option chain for that expiry
 $oc_res = dhan_post('https://api.dhan.co/v2/optionchain', [
     'UnderlyingScrip' => 13,
     'UnderlyingSeg'   => 'IDX_I',
     'Expiry'          => $expiry,
 ]);
 
-if (!$oc_res || ($oc_res['status'] ?? '') !== 'success') {
-    $result['error'] = 'Failed to fetch option chain';
+if (($oc_res['status'] ?? '') !== 'success') {
+    $result['error']     = 'Failed to fetch option chain';
+    $result['oc_resp']   = $oc_res;
+    $result['expiry']    = $expiry;
     echo json_encode($result);
     exit;
 }
 
 $last_price = $oc_res['data']['last_price'] ?? 0;
-$oc = $oc_res['data']['oc'] ?? [];
+$oc         = $oc_res['data']['oc'] ?? [];
 
-$call_oi = $put_oi = $call_vol = $put_vol = 0;
+$call_oi   = 0;
+$put_oi    = 0;
+$call_vol  = 0;
+$put_vol   = 0;
 
 foreach ($oc as $options) {
-    $call_oi  += $options['ce']['oi']      ?? 0;
-    $put_oi   += $options['pe']['oi']      ?? 0;
-    $call_vol += $options['ce']['volume']  ?? 0;
-    $put_vol  += $options['pe']['volume']  ?? 0;
+    $call_oi  += $options['ce']['oi']     ?? 0;
+    $put_oi   += $options['pe']['oi']     ?? 0;
+    $call_vol += $options['ce']['volume'] ?? 0;
+    $put_vol  += $options['pe']['volume'] ?? 0;
 }
 
-$pcr        = $call_oi  > 0 ? round($put_oi / $call_oi, 2) : 0;
+$pcr        = $call_oi  > 0 ? round($put_oi / $call_oi, 2)   : 0;
 $volume_pcr = $call_vol > 0 ? round($put_vol / $call_vol, 2) : 0;
 
 echo json_encode([
