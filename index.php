@@ -5,6 +5,9 @@ header('Access-Control-Allow-Origin: *');
 const DHAN_ACCESS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2NDY1NjMxLCJpYXQiOjE3NjYzNzkyMzEsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA3MTkwNjcyIn0.c0VMwdwejv2kPXBzGRX1QEREfgnFsBTG36Ylc-AsE9-iQ0NoC6HS3vGohT5SIBKACyvxW88z67UmkmWC4PWLNg';
 const DHAN_CLIENT_ID    = '1107190672';
 
+// Set timezone to IST
+date_default_timezone_set('Asia/Kolkata');
+
 function dhan_post($url, array $body) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -89,7 +92,7 @@ function get_pcr_for_index($scrip, $seg = 'IDX_I') {
     ];
 }
 
-$result = ['timestamp' => date('Y-m-d H:i:s')];
+$result = ['timestamp' => date('Y-m-d H:i:s')];  // Now IST because of timezone set above
 
 $result['NIFTY']     = get_pcr_for_index(13, 'IDX_I');
 $result['BANKNIFTY'] = get_pcr_for_index(25, 'IDX_I');
