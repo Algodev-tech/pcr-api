@@ -1,3 +1,4 @@
 <?php
-echo "Files:\n";
+echo "<pre>";
 print_r(scandir(__DIR__));
+echo "</pre>";
