@@ -26,7 +26,7 @@ if (!$current_token || !$client_id) {
     exit;
 }
 
-// Call Dhan RenewToken API
+// Call Dhan RenewToken API with correct headers
 $ch = curl_init('https://api.dhan.co/v2/RenewToken');
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
@@ -35,7 +35,7 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER     => [
         'Content-Type: application/json',
         'access-token: ' . $current_token,
-        'dhanClientId: ' . $client_id,
+        'client-id: ' . $client_id,  // Changed from dhanClientId
     ],
     CURLOPT_SSL_VERIFYPEER => true,
     CURLOPT_TIMEOUT        => 15,
@@ -43,9 +43,20 @@ curl_setopt_array($ch, [
 
 $resp = curl_exec($ch);
 $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$err  = curl_error($ch);
 curl_close($ch);
 
-if ($resp === false || $code !== 200) {
+if ($resp === false) {
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'cURL error: ' . $err,
+        'http_code' => $code,
+    ]);
+    exit;
+}
+
+if ($code !== 200) {
     http_response_code(500);
     echo json_encode([
         'status' => 'error',
@@ -57,7 +68,19 @@ if ($resp === false || $code !== 200) {
 }
 
 $data = json_decode($resp, true);
-$new_token = $data['accessToken'] ?? $data['access_token'] ?? null;
+
+// Check for error in response
+if (isset($data['errorType']) || isset($data['errorCode'])) {
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Dhan API error',
+        'response' => $data,
+    ]);
+    exit;
+}
+
+$new_token = $data['data']['access_token'] ?? $data['data']['accessToken'] ?? $data['accessToken'] ?? $data['access_token'] ?? null;
 
 if (!$new_token) {
     http_response_code(500);
@@ -76,4 +99,5 @@ echo json_encode([
     'status' => 'success',
     'message' => 'Token renewed successfully',
     'renewed_at' => date('Y-m-d H:i:s'),
+    'token_preview' => substr($new_token, 0, 20) . '...',
 ]);
