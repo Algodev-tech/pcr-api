@@ -26,16 +26,14 @@ if (!$current_token || !$client_id) {
     exit;
 }
 
-// Call Dhan RenewToken API with correct headers
+// Call Dhan RenewToken API - exact headers from docs
 $ch = curl_init('https://api.dhan.co/v2/RenewToken');
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => json_encode([]),
+    CURLOPT_CUSTOMREQUEST  => 'POST',
     CURLOPT_HTTPHEADER     => [
-        'Content-Type: application/json',
         'access-token: ' . $current_token,
-        'client-id: ' . $client_id,  // Changed from dhanClientId
+        'dhanClientId: ' . $client_id,
     ],
     CURLOPT_SSL_VERIFYPEER => true,
     CURLOPT_TIMEOUT        => 15,
@@ -56,37 +54,28 @@ if ($resp === false) {
     exit;
 }
 
-if ($code !== 200) {
+$data = json_decode($resp, true);
+
+// Check for error response
+if ($code !== 200 || isset($data['errorType']) || isset($data['errorCode'])) {
     http_response_code(500);
     echo json_encode([
         'status' => 'error',
         'message' => 'Failed to renew token',
         'http_code' => $code,
-        'response' => $resp,
-    ]);
-    exit;
-}
-
-$data = json_decode($resp, true);
-
-// Check for error in response
-if (isset($data['errorType']) || isset($data['errorCode'])) {
-    http_response_code(500);
-    echo json_encode([
-        'status' => 'error',
-        'message' => 'Dhan API error',
         'response' => $data,
     ]);
     exit;
 }
 
-$new_token = $data['data']['access_token'] ?? $data['data']['accessToken'] ?? $data['accessToken'] ?? $data['access_token'] ?? null;
+// Extract new token from response
+$new_token = $data['accessToken'] ?? null;
 
 if (!$new_token) {
     http_response_code(500);
     echo json_encode([
         'status' => 'error',
-        'message' => 'No token in response',
+        'message' => 'No accessToken in response',
         'response' => $data,
     ]);
     exit;
@@ -100,4 +89,5 @@ echo json_encode([
     'message' => 'Token renewed successfully',
     'renewed_at' => date('Y-m-d H:i:s'),
     'token_preview' => substr($new_token, 0, 20) . '...',
+    'expiry_time' => $data['expiryTime'] ?? 'unknown',
 ]);
