@@ -19,9 +19,20 @@ if (is_file($cache_file)) {
     }
 }
 
-// === ENV VARS ===
-$dhan_access_token = getenv('DHAN_ACCESS_TOKEN');
-$dhan_client_id    = getenv('DHAN_CLIENT_ID');
+// === READ TOKEN FROM FILE (updated by renew script) ===
+$token_file = sys_get_temp_dir() . '/dhan_access_token.txt';
+$client_id  = getenv('DHAN_CLIENT_ID');
+
+// Initialize token file from env if it doesn't exist
+if (!is_file($token_file)) {
+    $initial_token = getenv('DHAN_ACCESS_TOKEN');
+    if ($initial_token) {
+        file_put_contents($token_file, $initial_token);
+    }
+}
+
+$dhan_access_token = is_file($token_file) ? trim(file_get_contents($token_file)) : '';
+$dhan_client_id = $client_id;
 
 if (!$dhan_access_token || !$dhan_client_id) {
     http_response_code(500);
@@ -33,6 +44,7 @@ if (!$dhan_access_token || !$dhan_client_id) {
     exit;
 }
 
+// Set timezone to IST
 date_default_timezone_set('Asia/Kolkata');
 
 // === DHAN REQUEST HELPER ===
