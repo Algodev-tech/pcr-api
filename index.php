@@ -2,13 +2,27 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-const DHAN_ACCESS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2NDY1NjMxLCJpYXQiOjE3NjYzNzkyMzEsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA3MTkwNjcyIn0.c0VMwdwejv2kPXBzGRX1QEREfgnFsBTG36Ylc-AsE9-iQ0NoC6HS3vGohT5SIBKACyvxW88z67UmkmWC4PWLNg';
-const DHAN_CLIENT_ID    = '1107190672';
+// Read from environment variables set on Render
+$dhan_access_token = getenv('DHAN_ACCESS_TOKEN');
+$dhan_client_id    = getenv('DHAN_CLIENT_ID');
+
+// If env vars are missing, return error
+if (!$dhan_access_token || !$dhan_client_id) {
+    http_response_code(500);
+    echo json_encode([
+        'timestamp' => date('Y-m-d H:i:s'),
+        'error'     => 'dhan_env_missing',
+        'message'   => 'DHAN_ACCESS_TOKEN or DHAN_CLIENT_ID not set on server',
+    ]);
+    exit;
+}
 
 // Set timezone to IST
 date_default_timezone_set('Asia/Kolkata');
 
 function dhan_post($url, array $body) {
+    global $dhan_access_token, $dhan_client_id;
+
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -16,8 +30,8 @@ function dhan_post($url, array $body) {
         CURLOPT_POSTFIELDS     => json_encode($body),
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
-            'access-token: ' . DHAN_ACCESS_TOKEN,
-            'client-id: '   . DHAN_CLIENT_ID,
+            'access-token: ' . $dhan_access_token,
+            'client-id: '   . $dhan_client_id,
         ],
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_TIMEOUT        => 15,
@@ -92,7 +106,8 @@ function get_pcr_for_index($scrip, $seg = 'IDX_I') {
     ];
 }
 
-$result = ['timestamp' => date('Y-m-d H:i:s')];  // Now IST because of timezone set above
+// Main response
+$result = ['timestamp' => date('Y-m-d H:i:s')];  // IST because of timezone
 
 $result['NIFTY']     = get_pcr_for_index(13, 'IDX_I');
 $result['BANKNIFTY'] = get_pcr_for_index(25, 'IDX_I');
