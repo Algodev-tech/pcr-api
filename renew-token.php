@@ -1,5 +1,5 @@
 <?php
-// renew-token.php - Auto-renew Dhan access token
+// renew-token.php - Auto-renew Dhan access token with debug
 
 header('Content-Type: application/json');
 
@@ -26,7 +26,23 @@ if (!$current_token || !$client_id) {
     exit;
 }
 
-// Call Dhan RenewToken API - exact headers from docs
+// === DEBUG: Log what we're sending ===
+$debug_info = [
+    'url' => 'https://api.dhan.co/v2/RenewToken',
+    'method' => 'POST',
+    'client_id' => $client_id,
+    'token_preview' => substr($current_token, 0, 30) . '...',
+    'token_length' => strlen($current_token),
+    'headers_sent' => [
+        'access-token: (present)',
+        'dhanClientId: ' . $client_id,
+    ],
+];
+
+error_log('=== DHAN RENEW TOKEN DEBUG ===');
+error_log(json_encode($debug_info, JSON_PRETTY_PRINT));
+
+// Call Dhan RenewToken API
 $ch = curl_init('https://api.dhan.co/v2/RenewToken');
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
@@ -44,12 +60,18 @@ $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $err  = curl_error($ch);
 curl_close($ch);
 
+// === DEBUG: Log response ===
+error_log('=== DHAN RESPONSE ===');
+error_log('HTTP Code: ' . $code);
+error_log('Response: ' . $resp);
+
 if ($resp === false) {
     http_response_code(500);
     echo json_encode([
         'status' => 'error',
         'message' => 'cURL error: ' . $err,
         'http_code' => $code,
+        'debug' => $debug_info,
     ]);
     exit;
 }
@@ -64,6 +86,7 @@ if ($code !== 200 || isset($data['errorType']) || isset($data['errorCode'])) {
         'message' => 'Failed to renew token',
         'http_code' => $code,
         'response' => $data,
+        'debug' => $debug_info,
     ]);
     exit;
 }
@@ -77,6 +100,7 @@ if (!$new_token) {
         'status' => 'error',
         'message' => 'No accessToken in response',
         'response' => $data,
+        'debug' => $debug_info,
     ]);
     exit;
 }
