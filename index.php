@@ -2,11 +2,27 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-// Read from environment variables set on Render
+// === CACHE SETUP (3-minute TTL) ===
+$cache_file = sys_get_temp_dir() . '/pcr_cache.json';
+$cache_ttl  = 180; // 3 minutes in seconds
+
+if (is_file($cache_file)) {
+    $cache_raw = file_get_contents($cache_file);
+    $cache_data = json_decode($cache_raw, true);
+    if ($cache_data && isset($cache_data['cached_at'])) {
+        if (time() - $cache_data['cached_at'] < $cache_ttl) {
+            // Serve from cache
+            unset($cache_data['cached_at']);
+            echo json_encode($cache_data);
+            exit;
+        }
+    }
+}
+
+// === ENV VARS ===
 $dhan_access_token = getenv('DHAN_ACCESS_TOKEN');
 $dhan_client_id    = getenv('DHAN_CLIENT_ID');
 
-// If env vars are missing, return error
 if (!$dhan_access_token || !$dhan_client_id) {
     http_response_code(500);
     echo json_encode([
@@ -17,9 +33,9 @@ if (!$dhan_access_token || !$dhan_client_id) {
     exit;
 }
 
-// Set timezone to IST
 date_default_timezone_set('Asia/Kolkata');
 
+// === DHAN REQUEST HELPER ===
 function dhan_post($url, array $body) {
     global $dhan_access_token, $dhan_client_id;
 
@@ -54,15 +70,12 @@ function dhan_post($url, array $body) {
     return $json;
 }
 
+// === GET PCR FOR INDEX ===
 function get_pcr_for_index($scrip, $seg = 'IDX_I') {
-    // 1) Get expiry list
     $expiry_res = dhan_post('https://api.dhan.co/v2/optionchain/expirylist', [
         'UnderlyingScrip' => $scrip,
         'UnderlyingSeg'   => $seg,
     ]);
-
-    // TEMP debug: log expiry response to Render logs
-    error_log('Expiry response for ' . $scrip . ': ' . json_encode($expiry_res));
 
     if (($expiry_res['status'] ?? '') !== 'success') {
         return ['error' => 'expiry_failed', 'raw' => $expiry_res];
@@ -73,7 +86,6 @@ function get_pcr_for_index($scrip, $seg = 'IDX_I') {
         return ['error' => 'no_expiry', 'raw' => $expiry_res];
     }
 
-    // 2) Get option chain for that expiry
     $oc_res = dhan_post('https://api.dhan.co/v2/optionchain', [
         'UnderlyingScrip' => $scrip,
         'UnderlyingSeg'   => $seg,
@@ -111,14 +123,13 @@ function get_pcr_for_index($scrip, $seg = 'IDX_I') {
     ];
 }
 
-// Main response
-$result = ['timestamp' => date('Y-m-d H:i:s')];  // IST
+// === MAIN RESPONSE ===
+$result = ['timestamp' => date('Y-m-d H:i:s')];
 
 $result['NIFTY']     = get_pcr_for_index(13, 'IDX_I');
 $result['BANKNIFTY'] = get_pcr_for_index(25, 'IDX_I');
 $result['FINNIFTY']  = get_pcr_for_index(51, 'IDX_I');
 
-// If any index failed, add a top-level error message
 if (
     isset($result['NIFTY']['error']) ||
     isset($result['BANKNIFTY']['error']) ||
@@ -126,5 +137,10 @@ if (
 ) {
     $result['error'] = 'Failed to fetch expiry';
 }
+
+// === SAVE TO CACHE ===
+$cache_payload = $result;
+$cache_payload['cached_at'] = time();
+file_put_contents($cache_file, json_encode($cache_payload));
 
 echo json_encode($result);
