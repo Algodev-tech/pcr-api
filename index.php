@@ -55,10 +55,14 @@ function dhan_post($url, array $body) {
 }
 
 function get_pcr_for_index($scrip, $seg = 'IDX_I') {
+    // 1) Get expiry list
     $expiry_res = dhan_post('https://api.dhan.co/v2/optionchain/expirylist', [
         'UnderlyingScrip' => $scrip,
         'UnderlyingSeg'   => $seg,
     ]);
+
+    // TEMP debug: log expiry response to Render logs
+    error_log('Expiry response for ' . $scrip . ': ' . json_encode($expiry_res));
 
     if (($expiry_res['status'] ?? '') !== 'success') {
         return ['error' => 'expiry_failed', 'raw' => $expiry_res];
@@ -69,6 +73,7 @@ function get_pcr_for_index($scrip, $seg = 'IDX_I') {
         return ['error' => 'no_expiry', 'raw' => $expiry_res];
     }
 
+    // 2) Get option chain for that expiry
     $oc_res = dhan_post('https://api.dhan.co/v2/optionchain', [
         'UnderlyingScrip' => $scrip,
         'UnderlyingSeg'   => $seg,
@@ -107,10 +112,19 @@ function get_pcr_for_index($scrip, $seg = 'IDX_I') {
 }
 
 // Main response
-$result = ['timestamp' => date('Y-m-d H:i:s')];  // IST because of timezone
+$result = ['timestamp' => date('Y-m-d H:i:s')];  // IST
 
 $result['NIFTY']     = get_pcr_for_index(13, 'IDX_I');
 $result['BANKNIFTY'] = get_pcr_for_index(25, 'IDX_I');
 $result['FINNIFTY']  = get_pcr_for_index(51, 'IDX_I');
+
+// If any index failed, add a top-level error message
+if (
+    isset($result['NIFTY']['error']) ||
+    isset($result['BANKNIFTY']['error']) ||
+    isset($result['FINNIFTY']['error'])
+) {
+    $result['error'] = 'Failed to fetch expiry';
+}
 
 echo json_encode($result);
